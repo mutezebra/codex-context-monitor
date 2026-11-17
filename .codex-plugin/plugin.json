@@ -1,6 +1,6 @@
 {
   "name": "context-monitor",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "本地只读 Codex 上下文、token、TPS、会话平均 TPS 和本轮耗时监控面板。",
   "skills": "./skills/",
   "interface": {

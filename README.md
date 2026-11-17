@@ -11,6 +11,7 @@
 - 日志中的 5 小时/周额度快照。
 - 固定绑定一个会话的本地网页面板，可在 Codex 右侧浏览器面板打开。
 - 实验性工具栏注入：放在权限控件右侧的空白区，空间不足隐藏，切换会话清空旧值。
+- 用户级常驻服务、进程异常退出后恢复、应用关闭后等待及重新连接；Dock 启动器自动携带所需参数。
 
 **当前验证边界：**面板与输入框状态条均已在本机当前桌面应用实测（2026-11-17）。已验证真实 TPS、主聊天切换、同时打开旁聊、点击展开、Escape 收起，以及权限按钮无遮挡。状态条依赖内部 DOM，不是官方工具栏扩展接口；不修改应用包。
 
@@ -34,15 +35,27 @@ codex plugin add context-monitor@context-monitor-local
 
 新一轮对话中请求：`$context-monitor 打开当前会话监控面板`。
 
+### 一次配置，之后从 Dock 自动启动
+
+在插件根目录执行一次：
+
+```sh
+python3 scripts/manage.py enable-autostart
+```
+
+安装两个用户级 LaunchAgent，将运行代码复制到稳定的 Application Support 目录，并把 Dock 原来的 ChatGPT 入口接到 `ChatGPT Monitor` 启动器。之后点击这个位置打开应用即可，不需要再运行命令。应用关闭期间监控只等待，不主动重新打开应用。可用 `--no-dock` 只安装后台服务。
+
+常驻模式需要 Node.js 22+、Python 3.10+，以及 macOS 自带的 `osacompile`、`launchctl`、`codesign`。不会修改原应用包。直接从 Finder、Spotlight 或原应用路径启动，可能缺少调试参数；已运行的应用无法补加参数，启动器会提示正常退出后从监控入口重新打开。
+
 也可以直接启动：
 
 ```sh
 python3 scripts/manage.py start --thread <当前会话UUID>
 ```
 
-返回的 `panel_url` 是本机可访问的面板链接。面板固定绑定该会话，不会跟随另一个聊天自动切换。采集器只监听回环地址，访问路径随机生成；不要将这个地址分享给他人。进程状态位于 `${XDG_STATE_HOME:-~/.local/state}/codex-context-monitor/`。默认后台运行，不添加开机启动。
+返回的 `panel_url` 是本机可访问的面板链接。面板固定绑定该会话，不会跟随另一个聊天自动切换。采集器只监听回环地址，访问路径随机生成；不要将这个地址分享给他人。进程状态位于 `${XDG_STATE_HOME:-~/.local/state}/codex-context-monitor/`。单独调用 `start` 不安装登录代理；`enable-autostart` 才启用常驻。
 
-## 在输入框工具栏启用 TPS
+## 手动模式下启用输入框 TPS
 
 工具栏采用 CDP 临时注入，依赖应用内部 DOM。它不是官方公开的工具栏扩展点，应用升级可能需要适配。
 
@@ -58,9 +71,10 @@ DevTools 能操作应用页面，仅用于本机调试，不应对局域网或�
 ## 日常使用与维护
 
 - 使用过程中无需手动刷新，采集和计时会自行更新。
-- 普通方式重启桌面应用后，临时状态条会消失。按上面的启动步骤重新启用即可；未配置开机启动或应用自动改写。
+- 常驻模式下，登录后监控进程自动启动，异常退出会恢复；从 Dock 的 `ChatGPT Monitor` 入口打开应用时，状态条自动恢复。
+- 关闭应用后监控进程继续等待，不强制重新打开。窗口或渲染器重建后会重新注入；未开启调试端口时等待，不终止应用。
 - 桌面应用升级后，内部 DOM 或日志格式可能改变。如果状态条消失或数据不可用，需要更新插件适配。
-- GitHub 保存源码与版本记录，不会自动把提交部署到本机。手动克隆安装的版本可以用 `git pull --ff-only` 更新源码，再运行 `codex plugin add context-monitor@context-monitor-local` 更新安装副本；正在运行的监控服务需要重载才能使用新代码。
+- GitHub 保存源码与版本记录，不会自动把提交部署到本机。克隆安装的版本可用 `git pull --ff-only` 更新源码，再运行 `codex plugin add context-monitor@context-monitor-local` 更新插件副本。常驻运行副本通过再次执行 `enable-autostart` 更新，会重载监控代理并保留原 Dock 入口的恢复备份。
 - 不要在活动聊天期间为更新插件而强制退出桌面应用。插件自身的采集服务可以单独停止、重新启动。
 
 ## 统计口径
@@ -91,11 +105,12 @@ TPS 是日志测得的**已完成响应平均速率**，不是逐 token 瞬时�
 
 ```sh
 python3 scripts/manage.py stop
+python3 scripts/manage.py disable-autostart
 codex plugin remove context-monitor@context-monitor-local
 codex plugin marketplace remove context-monitor-local
 ```
 
-工具栏采集器检测到服务停止后会移除自身节点并退出。重启应用也会移除临时注入；正常启动应用即可关闭本次启用的 DevTools 端口。
+常驻模式的 `stop` 暂停本次登录中的代理，`start` 可恢复；下次登录也会自动启动。`disable-autostart` 才永久关闭登录代理、恢复原 Dock 入口并移除监控启动器。运行副本和诊断日志保留在用户目录。关闭代理时状态条会移除；正常启动原应用即可关闭本次启用的 DevTools 端口。
 
 ## 开发与验证
 

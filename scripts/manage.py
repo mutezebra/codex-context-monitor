@@ -14,6 +14,8 @@ from urllib.request import urlopen
 
 ROOT = Path(__file__).resolve().parents[1]
 RUNTIME = Path(os.environ.get("XDG_STATE_HOME", Path.home()/".local/state")) / "codex-context-monitor"
+sys.path.insert(0,str(ROOT))
+from monitor import autostart
 
 
 def live_state():
@@ -30,25 +32,31 @@ def start():
     state=live_state()
     if state:
         return state
-    with (RUNTIME/"service.log").open("ab") as log:
-        process=subprocess.Popen([sys.executable,"-m","monitor.server","--runtime",str(RUNTIME)],
-            cwd=ROOT,stdin=subprocess.DEVNULL,stdout=log,stderr=log,start_new_session=True)
+    process=None
+    if autostart.enabled(RUNTIME):
+        autostart.ensure_agents()
+    else:
+        with (RUNTIME/"service.log").open("ab") as log:
+            process=subprocess.Popen([sys.executable,"-m","monitor.server","--runtime",str(RUNTIME)],
+                cwd=ROOT,stdin=subprocess.DEVNULL,stdout=log,stderr=log,start_new_session=True)
     for _ in range(50):
         state=live_state()
         if state:
             return state
-        if process.poll() is not None:
+        if process and process.poll() is not None:
             raise RuntimeError("服务启动失败，请查看 "+str(RUNTIME/"service.log"))
         time.sleep(.1)
-    process.terminate()
+    if process:process.terminate()
     raise RuntimeError("服务启动超时")
 
 
 def main():
     parser=argparse.ArgumentParser(description="Context Monitor 本地控制")
-    parser.add_argument("action",choices=["start","stop","status","toolbar"])
+    parser.add_argument("action",choices=["start","stop","status","toolbar","enable-autostart","disable-autostart","launch"])
     parser.add_argument("--thread",help="面板固定绑定的 Codex 会话 UUID")
     parser.add_argument("--port",type=int,default=9222,help="已开启的本地 Codex DevTools 端口")
+    parser.add_argument("--app",type=Path,default=Path('/Applications/ChatGPT.app'),help="原桌面应用路径")
+    parser.add_argument("--no-dock",action='store_true',help="安装常驻服务但不修改 Dock 入口")
     args=parser.parse_args()
     RUNTIME.mkdir(parents=True,exist_ok=True,mode=0o700)
     with (RUNTIME/"control.lock").open("w") as lock:
@@ -64,9 +72,23 @@ def main():
             print(json.dumps(state,ensure_ascii=False))
         elif args.action=="status":
             state=live_state()
-            print(json.dumps(state or {"running":False},ensure_ascii=False))
+            result=state or {"running":False}
+            result['persistent']=autostart.enabled(RUNTIME)
+            if result['persistent']:result['agents']=autostart.agent_status()
+            print(json.dumps(result,ensure_ascii=False))
+        elif args.action=="enable-autostart":
+            if not 1<=args.port<=65535:raise ValueError('无效端口')
+            print(json.dumps(autostart.install(ROOT,RUNTIME,args.app,args.port,not args.no_dock),ensure_ascii=False))
+        elif args.action=="disable-autostart":
+            print(json.dumps(autostart.disable(RUNTIME),ensure_ascii=False))
+        elif args.action=="launch":
+            print(json.dumps(autostart.launch(RUNTIME),ensure_ascii=False))
         elif args.action=="toolbar":
             state=start()
+            if autostart.enabled(RUNTIME):
+                autostart.ensure_agents()
+                print('常驻采集器已启动，会自动等待应用并恢复状态条。')
+                return
             result=subprocess.run(["node",str(ROOT/"scripts/attach.mjs"),"--port",str(args.port),
                                    "--runtime",str(RUNTIME),"--once"])
             if result.returncode:
@@ -85,6 +107,10 @@ def main():
             (RUNTIME/"toolbar.json").write_text(json.dumps({"pid":process.pid}))
             print("工具栏采集器已启动")
         else:
+            if autostart.enabled(RUNTIME):
+                autostart.pause()
+                print('监控已暂停；start 可恢复，下次登录也会自动启动。永久关闭请使用 disable-autostart。')
+                return
             state=live_state()
             if state:
                 # 验证 PID 仍指向本服务，防止旧状态文件误杀复用的进程号。
