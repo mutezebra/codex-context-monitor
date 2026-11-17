@@ -95,7 +95,7 @@ def make_server(store, token, port=0):
                 return self.error(404, "未找到")
             route = path[len(prefix):]
             if route == "health":
-                return self.send_body(200, b'{"service":"codex-context-monitor","version":"0.1.0"}')
+                return self.send_body(200, b'{"service":"codex-context-monitor","version":"0.2.0"}')
             if route.startswith("api/session/"):
                 try:
                     result = store.snapshot(route[len("api/session/"):])
