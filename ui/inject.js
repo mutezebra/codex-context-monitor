@@ -12,14 +12,25 @@
     return candidates.length===1?candidates[0]:null;
   }
   function threadId() {
-    const match=(location.pathname+location.hash).match(new RegExp('(?:threads?|tasks?|local)/('+uuid+')(?:[/?#]|$)','i'));
-    if(match) return match[1].toLowerCase();
-    // 新版桌面端使用内存路由，URL 保持 index.html；以明确的活动本地线程标记为准。
     const root=composerRoot();
-    if(!root||root.getAttribute('data-composer-placement')!=='thread')return null;
-    const rows=document.querySelectorAll('[data-app-action-sidebar-thread-active="true"][data-app-action-sidebar-thread-host-id="local"][data-app-action-sidebar-thread-kind="local"]');
-    const ids=new Set([...rows].map(el=>el.getAttribute('data-app-action-sidebar-thread-id')?.match(new RegExp('^local:('+uuid+')$','i'))?.[1]?.toLowerCase()).filter(Boolean));
-    return ids.size===1?[...ids][0]:null;
+    if(!root||root.getAttribute('data-composer-placement')==='home')return null;
+    // 内存路由下侧栏状态可能滞后，输入框自己的会话标记才对应当前显示内容。
+    const markers=root.querySelectorAll('[data-above-composer-conversation-id]');
+    let id=null;
+    if(markers.length){
+      const ids=[...markers].map(el=>el.getAttribute('data-above-composer-conversation-id'));
+      if(ids.some(value=>!new RegExp('^'+uuid+'$','i').test(value)))return null;
+      const unique=new Set(ids.map(value=>value.toLowerCase()));
+      if(unique.size!==1)return null;
+      id=[...unique][0];
+    }else{
+      id=(location.pathname+location.hash).match(new RegExp('(?:threads?|tasks?|local)/('+uuid+')(?:[/?#]|$)','i'))?.[1]?.toLowerCase();
+    }
+    if(!id)return null;
+    const rows=[...document.querySelectorAll('[data-app-action-sidebar-thread-id]')].filter(el=>
+      el.getAttribute('data-app-action-sidebar-thread-id')?.split(':').at(-1)?.toLowerCase()===id);
+    if(rows.length&&!rows.some(el=>el.getAttribute('data-app-action-sidebar-thread-host-id')==='local'&&el.getAttribute('data-app-action-sidebar-thread-kind')==='local'))return null;
+    return id;
   }
   function findAnchor() {
     const root=composerRoot();
@@ -56,7 +67,11 @@
     frame=null;
     if(disposed) return;
     const id=threadId();
-    if(id!==activeThread){activeThread=id;snapshot=null;if(button)button.textContent='TPS — · 均值 —';if(drawer)drawer.hidden=true;}
+    if(id!==activeThread){
+      activeThread=id;snapshot=null;refreshed=Date.now();
+      if(button){button.textContent='TPS — · 均值 — · 本轮 —';button.setAttribute('aria-expanded','false');}
+      drawer?.remove();drawer=view=null;
+    }
     const next=findAnchor();
     if(!id||!next){detach();return;}
     if(anchor===next&&host?.isConnected){position();return;}
@@ -86,8 +101,9 @@
     if(snapshot)view.update(snapshot);
   }
   function update(s){
+    mount();
     if(s.thread_id!==threadId()) return;
-    snapshot=s;refreshed=Date.now();mount();
+    snapshot=s;refreshed=Date.now();
     if(!button)return;
     const oldActive=!['completed','interrupted','unknown'].includes(s.phase)&&Date.now()-s.log_modified_at>120000;
     const latest=oldActive||s.phase==='waiting'?null:s.latest_tps;
@@ -99,7 +115,7 @@
     if(records.some(r=>r.type==='attributes'||r.type==='childList'&&[...r.addedNodes,...r.removedNodes].some(n=>
       n.nodeType===1&&n.id!=='context-monitor-toolbar'&&n.id!=='context-monitor-drawer')))schedule();
   });
-  observer.observe(document.body,{subtree:true,childList:true,attributes:true,attributeFilter:['data-app-action-sidebar-thread-active','data-app-action-sidebar-thread-id','data-app-action-sidebar-thread-host-id','data-app-action-sidebar-thread-kind','data-composer-placement']});
+  observer.observe(document.body,{subtree:true,childList:true,attributes:true,attributeFilter:['data-above-composer-conversation-id','data-app-action-sidebar-thread-id','data-app-action-sidebar-thread-host-id','data-app-action-sidebar-thread-kind','data-composer-placement']});
   const key=e=>{if(e.key==='Escape'&&drawer&&!drawer.hidden){e.preventDefault();e.stopImmediatePropagation();drawer.hidden=true;button?.setAttribute('aria-expanded','false');button?.focus();}};
   // 宿主在 document 捕获阶段处理快捷键，先关闭本插件面板，避免 Escape 被宿主消费。
   window.addEventListener('keydown',key,true);
@@ -109,7 +125,7 @@
     if(button&&Date.now()-refreshed>8000){button.textContent='TPS — · 监控已断开';view?.error('监控连接已断开');return;}
     if(snapshot){const el=button?.querySelector('[data-elapsed]');if(el)el.textContent=ContextMonitorUI.formatElapsed(ContextMonitorUI.elapsed(snapshot));if(drawer&&!drawer.hidden)view?.tick();}
   },1000);
-  globalThis.__contextMonitor={threadId,update,status:()=>({threadId:threadId(),anchor:!!findAnchor(),mounted:!!host,visible:host?.style.display!=='none'&&!!host}),
+  globalThis.__contextMonitor={threadId,update,status:()=>({threadId:threadId(),snapshotThreadId:snapshot?.thread_id??null,anchor:!!findAnchor(),mounted:!!host,visible:host?.style.display!=='none'&&!!host}),
     dispose(){disposed=true;observer.disconnect();clearInterval(timer);cancelAnimationFrame(frame);window.removeEventListener('keydown',key,true);window.removeEventListener('resize',schedule);window.removeEventListener('scroll',schedule,true);detach();delete globalThis.__contextMonitor;delete globalThis.__contextMonitorCSS;delete globalThis.ContextMonitorUI;}};
   mount();
 })();
