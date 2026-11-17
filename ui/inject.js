@@ -35,8 +35,12 @@
   function findAnchor() {
     const root=composerRoot();
     if(!root) return null;
-    // 只识别已核对过的权限按钮标签，不按任意按钮序号猜测位置。
-    const matches=[...root.querySelectorAll('button')].filter(el=>
+    const buttons=[...root.querySelectorAll('button')].filter(el=>el.getBoundingClientRect().width>0);
+    // 可访问名称标识控件职责，按钮正文则会随权限模式变化。
+    const controls=buttons.filter(el=>/^(更改权限|Change permissions)$/.test(el.getAttribute('aria-label')?.trim()||''));
+    if(controls.length)return controls.length===1?controls[0]:null;
+    // 旧版没有可访问名称时，只回退已知的权限文案，不按按钮序号猜测。
+    const matches=buttons.filter(el=>
       /^(完全访问|Full access|默认权限|Default permissions|Read.only|只读)$/.test(el.textContent.trim()));
     return matches.length===1?matches[0]:null;
   }
