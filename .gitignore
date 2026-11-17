@@ -1,0 +1,12 @@
+__pycache__/
+*.pyc
+.DS_Store
+node_modules/
+artifacts/
+.runtime/
+.env
+.env.*
+*.log
+# 本地验收记录与会话截图不随插件源码发布。
+docs/dev-loop-runs/
+docs/elapsed-time.md

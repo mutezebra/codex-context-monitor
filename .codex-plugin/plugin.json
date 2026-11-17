@@ -1,0 +1,20 @@
+{
+  "name": "context-monitor",
+  "version": "0.1.0",
+  "description": "本地只读 Codex 上下文、token、TPS、会话平均 TPS 和本轮耗时监控面板。",
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Context Monitor",
+    "shortDescription": "查看上下文、token 和会话输出速度",
+    "longDescription": "读取本地会话日志显示上下文、缓存、TPS、会话加权平均、本轮实时计时与额度快照。可选工具栏注入需要本地 DevTools 端口。",
+    "category": "Developer tools",
+    "capabilities": [
+      "Instructions"
+    ],
+    "brandColor": "#479DE1",
+    "defaultPrompt": [
+      "打开当前会话的 Context Monitor。",
+      "检查 Context Monitor 工具栏是否可以启用。"
+    ]
+  }
+}

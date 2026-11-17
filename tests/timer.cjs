@@ -1,0 +1,16 @@
+const assert=require('node:assert/strict');
+const fs=require('node:fs');
+const vm=require('node:vm');
+const path=require('node:path');
+const context={};
+vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../ui/panel.js'),'utf8'),context);
+const {elapsed,formatElapsed}=context.ContextMonitorUI;
+assert.equal(elapsed({turn_status:'active',turn_started_at:1000},66000),65000);
+assert.equal(elapsed({turn_status:'completed',turn_started_at:1000,duration_ms:65321},999999),65321);
+assert.equal(elapsed({turn_status:'interrupted',duration_ms:12345},999999),12345);
+assert.equal(elapsed({turn_status:'active'},66000),null);
+assert.equal(elapsed({turn_status:'active',turn_started_at:1000},0),0);
+assert.equal(formatElapsed(65000),'01:05');
+assert.equal(formatElapsed(3661000),'1:01:01');
+assert.equal(formatElapsed(null),'—');
+console.log('PASS: 活跃计时、结束/中断冻结、缺失数据、时钟回拨和时间格式。');

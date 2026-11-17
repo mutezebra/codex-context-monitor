@@ -1,0 +1,7 @@
+{
+  "name": "codex-context-monitor",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {"test:ui": "node tests/ui.cjs"},
+  "devDependencies": {"playwright-core": "1.57.0"}
+}
